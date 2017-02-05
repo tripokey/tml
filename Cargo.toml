@@ -1,0 +1,19 @@
+[package]
+name = "tml"
+version = "0.1.0"
+authors = ["Michael Leandersson <tripokey@gmail.com>"]
+
+description = "Creates symbolic links and parent directories if needed."
+repository = "https://github.com/tripokey/tml"
+license = "MIT OR Apache-2.0"
+
+[[bin]]
+name = "tml"
+doc = false
+
+[dependencies]
+clap = "2.20.3"
+
+[dependencies.error-chain]
+version = "0.8.1"
+default-features = false
