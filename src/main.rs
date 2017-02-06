@@ -7,6 +7,7 @@ extern crate tml;
 
 use clap::{Arg, App, ArgMatches};
 use std::path::Path;
+use tml::errors::*;
 
 const SOURCE: &'static str = "SOURCE";
 const DESTINATION: &'static str = "DESTINATION";
@@ -65,7 +66,7 @@ fn run() -> tml::errors::Result<()> {
 
 fn handle_args(matches: &ArgMatches) -> tml::errors::Result<()> {
     let src = matches.value_of(SOURCE).ok_or(format!("{} argument missing", SOURCE))?;
-    let dst = matches.value_of(DESTINATION);
+    let dst = tml::expand_destination(src, matches.value_of(DESTINATION).unwrap_or(""))?;
     let verify = !matches.is_present(NO_VERIFY);
 
     // Verify that src exists
@@ -73,5 +74,13 @@ fn handle_args(matches: &ArgMatches) -> tml::errors::Result<()> {
         bail!("{} does not exist", src);
     }
 
-    tml::symlink(src, dst)
+    // Create missing parent directories for dst
+    if let Some(dir) = dst.parent() {
+        std::fs::create_dir_all(dir)
+            .chain_err(|| format!("Failed to create directory {}", dir.display()))?;
+    }
+
+    // Create dst
+    std::os::unix::fs::symlink(&src, &dst)
+        .chain_err(|| format!("Failed to create {}", dst.display()))
 }
