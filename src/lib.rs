@@ -8,7 +8,7 @@ pub mod errors {
 }
 
 use errors::*;
-use std::path::Path;
+use std::path::{Path, MAIN_SEPARATOR};
 use std::borrow::Cow::{self, Owned, Borrowed};
 use std::os::unix::ffi::OsStrExt;
 
@@ -31,7 +31,7 @@ pub fn expand_destination<'a, S, D>(src: &'a S, dst: &'a D) -> Result<Cow<'a, Pa
         src.file_name()
             .and_then(|basename| Some(Borrowed(Path::new(basename))))
             .ok_or(format!("Failed to find basename of {}", src.display()).into())
-    } else if dst.as_os_str().as_bytes().ends_with(b"/") {
+    } else if dst.as_os_str().as_bytes().ends_with(&[MAIN_SEPARATOR as u8]) {
         src.file_name()
             .and_then(|basename| Some(Owned(Path::new(dst).join(basename))))
             .ok_or(format!("Failed to find basename of {}", src.display()).into())
@@ -43,7 +43,17 @@ pub fn expand_destination<'a, S, D>(src: &'a S, dst: &'a D) -> Result<Cow<'a, Pa
 #[cfg(test)]
 mod tests {
     use super::expand_destination;
-    use std::path::{Path};
+    use std::path::{Path, MAIN_SEPARATOR};
+
+    trait SlashToSep {
+        fn slash_to_sep(&self) -> String;
+    }
+
+    impl SlashToSep for str {
+        fn slash_to_sep(&self) -> String {
+            self.replace("/", &MAIN_SEPARATOR.to_string())
+        }
+    }
 
     #[test]
     #[should_panic]
@@ -57,31 +67,31 @@ mod tests {
     #[should_panic]
     fn expand_destination_empty_src_dst_ends_with_sep() {
         let src = "";
-        let dst = "dest/";
-        expand_destination(src, dst).unwrap();
+        let dst = "dest/".slash_to_sep();
+        expand_destination(src, &dst).unwrap();
     }
 
     #[test]
     fn expand_destination_empty_dst() {
-        let src = "/test/file";
+        let src = "/test/file".slash_to_sep();
         let dst = "";
         let res = "file";
-        assert_eq!(Path::new(res), expand_destination(src, dst).unwrap());
+        assert_eq!(Path::new(res), expand_destination(&src, dst).unwrap());
     }
 
     #[test]
     fn expand_destination_with_dst() {
-        let src = "/test/file";
+        let src = "/test/file".slash_to_sep();
         let dst = "destination";
         let res = "destination";
-        assert_eq!(Path::new(res), expand_destination(src, dst).unwrap());
+        assert_eq!(Path::new(res), expand_destination(&src, dst).unwrap());
     }
 
     #[test]
     fn expand_destination_with_dst_ending_with_sep() {
-        let src = "/test/file";
-        let dst = "destination/";
-        let res = "destination/file";
-        assert_eq!(Path::new(res), expand_destination(src, dst).unwrap());
+        let src = "/test/file".slash_to_sep();
+        let dst = "destination/".slash_to_sep();
+        let res = "destination/file".slash_to_sep();
+        assert_eq!(Path::new(&res), expand_destination(&src, &dst).unwrap());
     }
 }
