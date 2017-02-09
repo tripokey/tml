@@ -7,6 +7,7 @@ extern crate tml;
 
 use clap::{Arg, App, ArgMatches};
 use std::path::Path;
+use std::borrow::Cow::{Owned, Borrowed};
 use tml::errors::*;
 
 const SOURCE: &'static str = "SOURCE";
@@ -69,18 +70,41 @@ fn handle_args(matches: &ArgMatches) -> tml::errors::Result<()> {
     let dst = tml::expand_destination(src, matches.value_of(DESTINATION).unwrap_or(""))?;
     let verify = !matches.is_present(NO_VERIFY);
 
-    // Verify that src exists
-    if verify && !Path::new(src).exists() {
-        bail!("{} does not exist", src);
-    }
-
     // Create missing parent directories for dst
     if let Some(dir) = dst.parent() {
         std::fs::create_dir_all(dir)
             .chain_err(|| format!("Failed to create directory {}", dir.display()))?;
     }
 
+    // Verify that src exists
+    if verify {
+        verify_src_from_dst(src, &dst)?;
+    }
+
     // Create dst
     std::os::unix::fs::symlink(&src, &dst)
         .chain_err(|| format!("Failed to create {}", dst.display()))
+}
+
+fn verify_src_from_dst<S, D>(src: &S, dst: &D) -> tml::errors::Result<()>
+    where S: AsRef<Path> + ?Sized,
+          D: AsRef<Path> + ?Sized
+{
+    let src = src.as_ref();
+    let dst = dst.as_ref();
+
+    let path = if src.is_relative() {
+        match dst.parent() {
+            Some(cwd) => Owned(cwd.join(src)),
+            None => Borrowed(src),
+        }
+    } else {
+        Borrowed(src)
+    };
+
+    if !path.exists() {
+        bail!("{} does not exist", path.display());
+    }
+
+    Ok(())
 }
