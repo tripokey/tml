@@ -16,18 +16,20 @@ const NO_VERIFY: &'static str = "NO_VERIFY";
 const NAME: &'static str = "tml";
 const FORCE: &'static str = "FORCE";
 
-struct PathExt<'a>(&'a Path);
+struct PathExt<T>(T);
 
 /// PartialEq for PathExt means that both files exists and have the same inode number on the same
 /// device.
-impl<'a> PartialEq for PathExt<'a> {
-    fn eq(&self, other: &PathExt<'a>) -> bool {
+impl<T: AsRef<Path>> PartialEq for PathExt<T> {
+    fn eq(&self, other: &Self) -> bool {
         use std::os::unix::fs::MetadataExt;
 
         self.0
+            .as_ref()
             .symlink_metadata()
             .and_then(|lhs| {
                 other.0
+                    .as_ref()
                     .symlink_metadata()
                     .and_then(|rhs| Ok(lhs.ino() == rhs.ino() && lhs.dev() == rhs.dev()))
             })
@@ -35,20 +37,20 @@ impl<'a> PartialEq for PathExt<'a> {
     }
 }
 
-impl<'a> PathExt<'a> {
+impl<T: AsRef<Path>> PathExt<T> {
     /// Remove symlink file or empty directory
     fn remove(&self) -> Result<()> {
-        if let Ok(meta) = self.0.symlink_metadata() {
+        if let Ok(meta) = self.0.as_ref().symlink_metadata() {
             let filetype = meta.file_type();
 
             if filetype.is_file() || filetype.is_symlink() {
-                std::fs::remove_file(self.0)
-                    .chain_err(|| format!("Failed to remove '{}'", self.0.display()))?;
+                std::fs::remove_file(self.0.as_ref())
+                    .chain_err(|| format!("Failed to remove '{}'", self.0.as_ref().display()))?;
             } else if filetype.is_dir() {
-                std::fs::remove_dir(self.0)
-                    .chain_err(|| format!("Failed to remove '{}'", self.0.display()))?;
+                std::fs::remove_dir(self.0.as_ref())
+                    .chain_err(|| format!("Failed to remove '{}'", self.0.as_ref().display()))?;
             } else {
-                bail!("unknown filetype for '{}'", self.0.display())
+                bail!("unknown filetype for '{}'", self.0.as_ref().display())
             }
         }
 
