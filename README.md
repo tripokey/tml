@@ -11,6 +11,7 @@ USAGE:
     tml [FLAGS] <SOURCE> [ARGS]
 
 FLAGS:
+    -f               remove existing DESTINATION
     -n               do not verify that SOURCE exists
     -h, --help       Prints help information
     -V, --version    Prints version information

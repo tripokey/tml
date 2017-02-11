@@ -14,6 +14,47 @@ const SOURCE: &'static str = "SOURCE";
 const DESTINATION: &'static str = "DESTINATION";
 const NO_VERIFY: &'static str = "NO_VERIFY";
 const NAME: &'static str = "tml";
+const FORCE: &'static str = "FORCE";
+
+struct PathExt<'a>(&'a Path);
+
+/// PartialEq for PathExt means that both files exists and have the same inode number on the same
+/// device.
+impl<'a> PartialEq for PathExt<'a> {
+    fn eq(&self, other: &PathExt<'a>) -> bool {
+        use std::os::unix::fs::MetadataExt;
+
+        self.0
+            .symlink_metadata()
+            .and_then(|lhs| {
+                other.0
+                    .symlink_metadata()
+                    .and_then(|rhs| Ok(lhs.ino() == rhs.ino() && lhs.dev() == rhs.dev()))
+            })
+            .unwrap_or(false)
+    }
+}
+
+impl<'a> PathExt<'a> {
+    /// Remove symlink file or empty directory
+    fn remove(&self) -> Result<()> {
+        if let Ok(meta) = self.0.symlink_metadata() {
+            let filetype = meta.file_type();
+
+            if filetype.is_file() || filetype.is_symlink() {
+                std::fs::remove_file(self.0)
+                    .chain_err(|| format!("Failed to remove '{}'", self.0.display()))?;
+            } else if filetype.is_dir() {
+                std::fs::remove_dir(self.0)
+                    .chain_err(|| format!("Failed to remove '{}'", self.0.display()))?;
+            } else {
+                bail!("unknown filetype for '{}'", self.0.display())
+            }
+        }
+
+        Ok(())
+    }
+}
 
 fn main() {
     if let Err(ref e) = run() {
@@ -37,7 +78,7 @@ fn main() {
 
 fn run() -> tml::errors::Result<()> {
     handle_args(&App::new(NAME)
-        .version("0.1.0")
+        .version("0.2.0")
         .author("Michael Leandersson <tripokey@gmail.com>")
         .about(format!("{} creates a symbolic link to {} at {}, creating parent directories as \
                         needed.\n{} defaults to the basename of {} if omitted.\nThe basename of \
@@ -61,6 +102,9 @@ fn run() -> tml::errors::Result<()> {
         .arg(Arg::with_name(NO_VERIFY)
             .short("n")
             .help(format!("do not verify that {} exists", SOURCE).as_ref()))
+        .arg(Arg::with_name(FORCE)
+            .short("f")
+            .help(format!("remove existing {}", DESTINATION).as_ref()))
         .get_matches())
 
 }
@@ -69,6 +113,7 @@ fn handle_args(matches: &ArgMatches) -> tml::errors::Result<()> {
     let src = matches.value_of(SOURCE).ok_or(format!("{} argument missing", SOURCE))?;
     let dst = tml::expand_destination(src, matches.value_of(DESTINATION).unwrap_or(""))?;
     let verify = !matches.is_present(NO_VERIFY);
+    let force = matches.is_present(FORCE);
 
     // Create missing parent directories for dst
     if let Some(dir) = dst.parent() {
@@ -79,6 +124,11 @@ fn handle_args(matches: &ArgMatches) -> tml::errors::Result<()> {
     // Verify that src exists
     if verify {
         verify_src_from_dst(src, &dst)?;
+    }
+
+    // Remove dst
+    if force {
+        remove_dst_if_not_src(src, &dst)?;
     }
 
     // Create dst
@@ -107,4 +157,22 @@ fn verify_src_from_dst<S, D>(src: &S, dst: &D) -> tml::errors::Result<()>
     }
 
     Ok(())
+}
+
+fn remove_dst_if_not_src<S, D>(src: &S, dst: &D) -> Result<()>
+    where S: AsRef<Path> + ?Sized,
+          D: AsRef<Path> + ?Sized
+{
+    let src = PathExt(src.as_ref());
+    let dst = PathExt(dst.as_ref());
+
+    if src != dst {
+        dst.remove()
+    } else {
+        let src = src.0;
+        let dst = dst.0;
+        bail!("'{}' and '{}' are the same file",
+              src.display(),
+              dst.display())
+    }
 }
