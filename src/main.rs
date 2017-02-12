@@ -16,7 +16,7 @@ const NO_VERIFY: &'static str = "NO_VERIFY";
 const NAME: &'static str = "tml";
 const FORCE: &'static str = "FORCE";
 
-struct PathExt<T>(T);
+struct PathExt<T: AsRef<Path>>(T);
 
 /// PartialEq for PathExt means that both files exists and have the same inode number on the same
 /// device.
