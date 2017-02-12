@@ -9,54 +9,13 @@ use clap::{Arg, App, ArgMatches};
 use std::path::Path;
 use std::borrow::Cow::{Owned, Borrowed};
 use tml::errors::*;
+use tml::PathExt;
 
 const SOURCE: &'static str = "SOURCE";
 const DESTINATION: &'static str = "DESTINATION";
 const NO_VERIFY: &'static str = "NO_VERIFY";
 const NAME: &'static str = "tml";
 const FORCE: &'static str = "FORCE";
-
-struct PathExt<T: AsRef<Path>>(T);
-
-/// PartialEq for PathExt means that both files exists and have the same inode number on the same
-/// device.
-impl<T: AsRef<Path>> PartialEq for PathExt<T> {
-    fn eq(&self, other: &Self) -> bool {
-        use std::os::unix::fs::MetadataExt;
-
-        self.0
-            .as_ref()
-            .symlink_metadata()
-            .and_then(|lhs| {
-                other.0
-                    .as_ref()
-                    .symlink_metadata()
-                    .and_then(|rhs| Ok(lhs.ino() == rhs.ino() && lhs.dev() == rhs.dev()))
-            })
-            .unwrap_or(false)
-    }
-}
-
-impl<T: AsRef<Path>> PathExt<T> {
-    /// Remove symlink file or empty directory
-    fn remove(&self) -> Result<()> {
-        if let Ok(meta) = self.0.as_ref().symlink_metadata() {
-            let filetype = meta.file_type();
-
-            if filetype.is_file() || filetype.is_symlink() {
-                std::fs::remove_file(self.0.as_ref())
-                    .chain_err(|| format!("Failed to remove '{}'", self.0.as_ref().display()))?;
-            } else if filetype.is_dir() {
-                std::fs::remove_dir(self.0.as_ref())
-                    .chain_err(|| format!("Failed to remove '{}'", self.0.as_ref().display()))?;
-            } else {
-                bail!("unknown filetype for '{}'", self.0.as_ref().display())
-            }
-        }
-
-        Ok(())
-    }
-}
 
 fn main() {
     if let Err(ref e) = run() {
@@ -165,14 +124,12 @@ fn remove_dst_if_not_src<S, D>(src: &S, dst: &D) -> Result<()>
     where S: AsRef<Path> + ?Sized,
           D: AsRef<Path> + ?Sized
 {
-    let src = PathExt(src.as_ref());
-    let dst = PathExt(dst.as_ref());
+    let src = PathExt::from(src);
+    let dst = PathExt::from(dst);
 
     if src != dst {
         dst.remove()
     } else {
-        let src = src.0;
-        let dst = dst.0;
         bail!("'{}' and '{}' are the same file",
               src.display(),
               dst.display())
