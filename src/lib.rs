@@ -11,6 +11,67 @@ use errors::*;
 use std::path::{Path, MAIN_SEPARATOR};
 use std::borrow::Cow::{self, Owned, Borrowed};
 use std::os::unix::ffi::OsStrExt;
+use std::ops::Deref;
+
+pub struct PathExt<T: AsRef<Path>>(T);
+
+/// PartialEq for PathExt means that both files exists and have the same inode number on the same
+/// device.
+impl<T: AsRef<Path>, S: AsRef<Path>> PartialEq<S> for PathExt<T> {
+    fn eq(&self, other: &S) -> bool {
+        use std::os::unix::fs::MetadataExt;
+
+        self.symlink_metadata()
+            .and_then(|lhs| {
+                other.as_ref()
+                    .symlink_metadata()
+                    .and_then(|rhs| Ok(lhs.ino() == rhs.ino() && lhs.dev() == rhs.dev()))
+            })
+            .unwrap_or(false)
+    }
+}
+
+impl<T: AsRef<Path>> PathExt<T> {
+    /// Remove symlink file or empty directory
+    pub fn remove(&self) -> Result<()> {
+        if let Ok(meta) = self.symlink_metadata() {
+            let filetype = meta.file_type();
+
+            if filetype.is_file() || filetype.is_symlink() {
+                std::fs::remove_file(self)
+                    .chain_err(|| format!("Failed to remove '{}'", self.display()))?;
+            } else if filetype.is_dir() {
+                std::fs::remove_dir(self)
+                    .chain_err(|| format!("Failed to remove '{}'", self.display()))?;
+            } else {
+                bail!("unknown filetype for '{}'", self.display())
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl<T: AsRef<Path>> From<T> for PathExt<T> {
+    fn from(other: T) -> Self {
+        PathExt(other)
+    }
+}
+
+impl<T: AsRef<Path>> Deref for PathExt<T> {
+    type Target = Path;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_ref()
+    }
+}
+
+impl<T: AsRef<Path>> AsRef<Path> for PathExt<T> {
+    fn as_ref(&self) -> &Path {
+        self.0.as_ref()
+    }
+}
+
 
 /// Expand dst based on src.
 ///

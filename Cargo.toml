@@ -1,6 +1,6 @@
 [package]
 name = "tml"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Michael Leandersson <tripokey@gmail.com>"]
 
 description = "Creates symbolic links and parent directories if needed."
